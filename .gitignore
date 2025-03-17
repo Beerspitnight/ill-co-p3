@@ -10,6 +10,8 @@ __pycache__/
 # Ignore environment/config files
 credentials.json
 .env
+*.env
+.env.*
 
 *.csv
 app2.py
