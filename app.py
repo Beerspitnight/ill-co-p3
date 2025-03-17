@@ -20,6 +20,7 @@ from pydantic_settings import BaseSettings
 from tenacity import retry, stop_after_attempt, wait_exponential
 from functools import lru_cache
 from ratelimit import limits, sleep_and_retry, RateLimitException
+from openlibrary_search import fetch_books_from_openlibrary
 
 # Define BookResponse model
 class BookResponse(BaseModel):
@@ -279,6 +280,41 @@ def get_file():
     except Exception as e:
         logger.exception(f"Error serving file {filename}: {e}")
         return jsonify({"error": f"Error serving file: {str(e)}"}), 500
+
+@app.route("/search_openlibrary")
+def search_openlibrary():
+    """Search books using OpenLibrary API."""
+    query = request.args.get("query")
+    if not query:
+        return jsonify({"error": "Query parameter is required"}), 400
+        
+    try:
+        # Log the incoming request
+        request_id = str(uuid.uuid4())
+        logger.info(f"Processing request {request_id}: GET /search_openlibrary")
+        
+        # Fetch books from OpenLibrary
+        books = fetch_books_from_openlibrary(query)
+        
+        if not books:
+            return jsonify({
+                "message": "No books found",
+                "books": [],
+                "drive_link": None
+            })
+            
+        # Upload results to Google Drive
+        drive_link = upload_search_results_to_drive(books, f"openlibrary_{query}")
+        
+        return jsonify({
+            "message": f"Found {len(books)} books",
+            "books": books,
+            "drive_link": drive_link
+        })
+        
+    except Exception as e:
+        logger.error(f"Error processing OpenLibrary search: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 # Define before_request function
 @app.before_request
