@@ -7,6 +7,7 @@ from typing import Tuple, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 from ratelimit import limits, sleep_and_retry
 from dotenv import load_dotenv
+import glob
 
 # Load environment variables
 load_dotenv()
@@ -98,44 +99,57 @@ def fetch_open_library_details(title: str) -> Tuple[Optional[str], Optional[str]
         return None, None
 
 def process_books(input_csv: str, output_csv: str, batch_size: int = 10):
-    """
-    Process books from CSV and enrich with API data.
-    
-    Args:
-        input_csv (str): Path to input CSV file
-        output_csv (str): Path to output CSV file
-        batch_size (int): Number of books to process in each batch
-    """
     try:
-        df = pd.read_csv(input_csv)
-        total_books = len(df)
-        logger.info(f"Processing {total_books} books in batches of {batch_size}")
-
-        for i in range(0, total_books, batch_size):
-            batch = df.iloc[i:i+batch_size]
-            logger.info(f"Processing batch {i//batch_size + 1} of {(total_books + batch_size - 1)//batch_size}")
-
-            for index, row in batch.iterrows():
+        # Read CSV in chunks
+        for chunk in pd.read_csv(input_csv, chunksize=batch_size):
+            # Process this chunk
+            for index, row in chunk.iterrows():
                 title = row["title"]
                 author = row["authors"]
 
                 google_summary = fetch_google_books_summary(title, author)
                 toc, full_text = fetch_open_library_details(title)
 
-                df.at[index, "Summary"] = google_summary if google_summary else row.get("description")
-                df.at[index, "Table of Contents"] = toc
-                df.at[index, "Full Text Link"] = full_text
+                chunk.at[index, "Summary"] = google_summary
+                chunk.at[index, "Table of Contents"] = toc
+                chunk.at[index, "Full Text Link"] = full_text
 
-                # Add delay between individual books
-                time.sleep(1)
-
-        df.to_csv(output_csv, index=False)
-        logger.info(f"Extraction completed! Saved to {output_csv}")
+            # Write this chunk to CSV
+            if not os.path.exists(output_csv):
+                # First chunk - write with headers
+                chunk.to_csv(output_csv, index=False, mode='w')
+            else:
+                # Append without headers
+                chunk.to_csv(output_csv, index=False, mode='a', header=False)
+            
+            logger.info(f"Processed and saved batch of {len(chunk)} books")
 
     except Exception as e:
         logger.error(f"Error processing books: {e}", exc_info=True)
         raise
 
 if __name__ == "__main__":
-    # Simple test
-    process_books("test.csv", "test_processed.csv")
+    # Create output directory if it doesn't exist
+    os.makedirs("data/processed", exist_ok=True)
+    
+    # Get all CSV files in the raw_csv directory
+    csv_files = glob.glob("data/raw_csv/*.csv")
+    
+    if not csv_files:
+        logger.error("No CSV files found in data/raw_csv directory")
+        exit(1)
+        
+    logger.info(f"Found {len(csv_files)} CSV files to process")
+    
+    for input_file in csv_files:
+        try:
+            # Create output filename
+            filename = os.path.basename(input_file)
+            output_file = os.path.join("data/processed", f"processed_{filename}")
+            
+            logger.info(f"Processing file: {filename}")
+            process_books(input_file, output_file)
+            
+        except Exception as e:
+            logger.error(f"Error processing {filename}: {e}")
+            continue
