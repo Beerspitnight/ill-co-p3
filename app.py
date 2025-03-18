@@ -161,61 +161,93 @@ def setup_routes(app):
 # Create app instance
 app, settings = create_app()
 
-@app.route("/search_books", methods=["GET"])
+def extract_book_info(item):
+    """Extract book information including ISBN from API response."""
+    volume_info = item.get('volumeInfo', {})
+    
+    # Add ISBN validation
+    def validate_isbn(isbn):
+        return isbn and re.match(r'^[\dX]{10,13}$', isbn.strip())
+    
+    # Extract and validate ISBNs
+    isbns = []
+    industry_identifiers = volume_info.get('industryIdentifiers', [])
+    for identifier in industry_identifiers:
+        isbn = identifier.get('identifier')
+        if identifier.get('type') in ['ISBN_10', 'ISBN_13'] and validate_isbn(isbn):
+            isbns.append(isbn)
+    
+    # Log ISBN extraction
+    logger.info(f"Found {len(isbns)} valid ISBNs for book: {volume_info.get('title')}")
+    
+    return {
+        'title': volume_info.get('title', 'Unknown Title'),
+        'authors': volume_info.get('authors', []),
+        'description': volume_info.get('description', ''),
+        'isbn': isbns[0] if isbns else None,  # Use first ISBN found
+        'isbn_10': next((i for i in isbns if len(i) == 10), None),
+        'isbn_13': next((i for i in isbns if len(i) == 13), None),
+        'publisher': volume_info.get('publisher', ''),
+        'published_date': volume_info.get('publishedDate', ''),
+        'page_count': volume_info.get('pageCount', 0),
+        'categories': volume_info.get('categories', []),
+        'language': volume_info.get('language', ''),
+        'preview_link': volume_info.get('previewLink', ''),
+        'info_link': volume_info.get('infoLink', '')
+    }
+
+@app.route("/search_books")
 def search_books():
-    query = request.args.get("query", "").strip()
-    if not query or len(query) < 2:
-        return jsonify({"error": "Query must be at least 2 characters"}), 400
+    """Search books endpoint with enhanced metadata extraction."""
+    query = request.args.get("query")
+    if not query:
+        return jsonify({"error": "Query parameter is required"}), 400
 
-    # Add pagination
-    per_page = request.args.get("per_page", default=10, type=int)
-    if per_page < 1 or per_page > 40:  # Google Books API limit
-        return jsonify({"error": "per_page must be between 1 and 40"}), 400
-
-    # Fetch books
     try:
-        books = fetch_books_from_google(query)
+        request_id = str(uuid.uuid4())
+        logger.info(f"Processing request {request_id}: GET /search_books")
+        
+        books = []
+        url = f"https://www.googleapis.com/books/v1/volumes?q={query}&key={GOOGLE_BOOKS_API_KEY}"
+        
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
 
-        # Validate and structure the book data
-        validated_books = []
-        for book in books:
-            try:
-                try:
-                    # Filter the book dictionary to include only valid fields for BookResponse
-                    valid_fields = BookResponse.__fields__.keys()
-                    filtered_book = {key: value for key, value in book.items() if key in valid_fields}
-                    validated_books.append(BookResponse(**filtered_book).model_dump())
-                except Exception as e:
-                    logger.error(f"Validation error for book data: {book}. Error: {e}")
-                    continue
-            except Exception as e:
-                logger.error(f"Validation error for book data: {book}. Error: {e}")
-                continue
+        for item in data.get('items', []):
+            book_info = extract_book_info(item)
+            books.append(book_info)
 
-        # Fix: Use save_results_to_csv for local storage and then optionally upload to Drive
-        csv_filename = save_results_to_csv(validated_books, query)
-        if csv_filename is None:
-            return jsonify({"error": "Failed to save results to CSV"}), 500
-
-        # Optionally upload to Google Drive if needed
-        drive_link = None
-        try:
-            drive_link = upload_search_results_to_drive(validated_books, query)
-        except Exception as e:
-            logger.warning(f"Failed to upload to Google Drive: {e}")
-            # Continue even if Drive upload fails
-
+        # Create CSV with enhanced metadata
+        if books:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"search_results_{timestamp}.csv"
+            filepath = safe_join("data/raw_csv", filename)
+            
+            df = pd.DataFrame(books)
+            os.makedirs("data/raw_csv", exist_ok=True)
+            df.to_csv(filepath, index=False)
+            
+            logger.info(f"Saved {len(books)} books to {filepath}")
+            
+            # Upload to Google Drive
+            drive_link = upload_to_drive(filepath, filename)
+            
+            return jsonify({
+                "message": f"Found {len(books)} books",
+                "books": books,
+                "drive_link": drive_link
+            })
+        
         return jsonify({
-            "books": validated_books, 
-            "csv_filename": csv_filename,
-            "csv_link": drive_link
+            "message": "No books found",
+            "books": [],
+            "drive_link": None
         })
-    except ValueError as ve:
-        logger.error(f"ValueError in search_books: {ve}")
-        return jsonify({"error": "Invalid input"}), 400
+
     except Exception as e:
-        logger.exception(f"Unexpected error in search_books: {e}")
-        return jsonify({"error": "An unexpected error occurred while searching for books"}), 500
+        logger.error(f"Error processing request {request_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/list_results")
 def list_results():
