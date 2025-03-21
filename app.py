@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, g, redirect, url_for, Blueprint, send_from_directory, make_response
 from werkzeug.utils import safe_join
+from werkzeug.security import secure_filename
 from datetime import datetime
 import os
 import requests
@@ -223,6 +224,7 @@ def search_books():
         url = f"https://www.googleapis.com/books/v1/volumes?q={query}&key={GOOGLE_BOOKS_API_KEY}"
         
         url = f"https://www.googleapis.com/books/v1/volumes?q={query}&key={app.config['GOOGLE_BOOKS_API_KEY']}"
+        response = requests.get(url)
         response.raise_for_status()
         data = response.json()
 
@@ -236,19 +238,16 @@ def search_books():
             filename = f"search_results_{timestamp}.csv"
             filepath = safe_join("data/raw_csv", filename)
             
-            data = []
-            with open(filepath, "r") as f:
-                reader = csv.DictReader(f)
-                data = list(reader)
-            filtered = [row for row in data if float(row["column"]) > 10]
-            
             os.makedirs("data/raw_csv", exist_ok=True)
-            df.to_csv(filepath, index=False)
+            with open(filepath, 'w', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=['title', 'authors', 'description', 'isbn', 'publisher', 'categories'])
+                writer.writeheader()
+                writer.writerows(books)
             
             logger.info(f"Saved {len(books)} books to {filepath}")
             
             # Upload to Google Drive
-            drive_link = upload_to_drive(filepath, filename)
+            drive_link = upload_to_google_drive(filepath, filename)
             
             return jsonify({
                 "message": f"Found {len(books)} books",
