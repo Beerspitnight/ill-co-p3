@@ -10,11 +10,11 @@ google-auth==2.16.2
 google-auth-oauthlib==1.0.0
 google-auth-httplib2==0.1.0
 python-dotenv==1.0.0
-werkzeug==2.2.3
+werkzeug
 uuid==1.30
 tenacity==8.2.2
 ratelimit==2.2.1
 # Pin specific versions of numpy and pandas that are compatible
 numpy==1.26.3
-pandas==2.2.0
+pandas==2.2.0 --no-binary pandas
 # Add other dependencies...

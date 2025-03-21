@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, g, redirect, url_for, Blueprint, send_from_directory, make_response
-from werkzeug.utils import safe_join
-from werkzeug.security import secure_filename
+from werkzeug.utils import safe_join, secure_filename  # secure_filename moved here
+# Remove the import from security module
+from werkzeug.security import generate_password_hash, check_password_hash  # If you need these
 from datetime import datetime
 import os
 import requests
