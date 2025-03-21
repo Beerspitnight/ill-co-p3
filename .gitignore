@@ -1,30 +1,73 @@
-# Ignore virtual environments
-venv/
-myenv/
-.venv/
-
-# Ignore Python cache files
+# Python
 __pycache__/
 *.py[cod]
+*.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Ignore environment/config files
-credentials.json
+# Environment variables and virtualenv
 .env
-*.env
-.env.*
-
-*.csv
-app2.py.DS_Store
-.cache_ggshield
-.DS_Store
-.cache_ggshield
-encoded_credentials.txt
-__pycache__/
-*.pyc
-*.pyo
-.env
+.venv
+env/
 venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE specific files
 .idea/
 .vscode/
+*.swp
+*.swo
+.spyderproject
+.spyproject
+.ropeproject
+
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Application specific
 *.log
-<file>
+*.csv
+*.db
+*.sqlite
+logs/
+temp/
+tmp/
+
+# Google credentials
+credentials/
+*.json
+# Exclude specific JSON files that should be tracked
+!package.json
+
+# Heroku
+.pytest_cache/
+
+# Credential files
+encoded_credentials.txt
+*credentials*.txt
+*secret*.txt
+*key*.txt
+credentials/
