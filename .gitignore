@@ -71,3 +71,6 @@ encoded_credentials.txt
 *secret*.txt
 *key*.txt
 credentials/
+
+# Backup
+app.py.backup.py
