@@ -21,6 +21,10 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from functools import lru_cache
 from ratelimit import limits, sleep_and_retry, RateLimitException
 from openlibrary_search import fetch_books_from_openlibrary
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Define BookResponse model
 class BookResponse(BaseModel):
@@ -49,14 +53,23 @@ class Settings(BaseSettings):
         GOOGLE_APPLICATION_CREDENTIALS (str): Path or content of Google service account credentials.
         MAX_RETRIES (int): Maximum number of retries for API requests. Default is 3.
         CACHE_TIMEOUT (int): Cache timeout duration in seconds. Default is 3600 seconds (1 hour).
+        OPENAI_API_KEY (str): API key for OpenAI.
+        SECRET_KEY (str): Secret key for the application.
+        GOOGLE_DRIVE_FOLDER_ID (str): Google Drive folder ID for uploads.
+        API_KEY (str): General API key for the application.
     """
     GOOGLE_BOOKS_API_KEY: str
     GOOGLE_APPLICATION_CREDENTIALS: str
     MAX_RETRIES: int = 3
     CACHE_TIMEOUT: int = 3600
+    OPENAI_API_KEY: str
+    SECRET_KEY: str
+    GOOGLE_DRIVE_FOLDER_ID: str
+    API_KEY: str
 
     class Config:
         env_file = '.env'
+        extra = "allow"  # Allow extra fields
 
 # Initialize settings
 def get_settings():
@@ -623,3 +636,5 @@ if __name__ == "__main__":
     except (ValueError, RuntimeError) as e:
         logger.error(f"Failed to start application: {e}")
         raise
+
+print(f"GOOGLE_APPLICATION_CREDENTIALS: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
