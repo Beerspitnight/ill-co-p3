@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, g, redirect, url_for, Blueprint, send_from_directory, make_response
+from flask import Flask, request, jsonify, g, redirect, url_for, Blueprint, send_from_directory, make_response, render_template
 from werkzeug.utils import safe_join, secure_filename  # secure_filename moved here
 # Remove the import from security module
 from werkzeug.security import generate_password_hash, check_password_hash  # If you need these
@@ -25,6 +25,7 @@ from functools import lru_cache
 from ratelimit import limits, sleep_and_retry, RateLimitException
 from openlibrary_search import fetch_books_from_openlibrary
 from dotenv import load_dotenv
+from flask_socketio import SocketIO, emit
 
 # Load environment variables from .env file
 load_dotenv()
@@ -173,8 +174,50 @@ def setup_routes(app):
                 "error": str(e)
             }), 500
 
+    @app.route('/')
+    def index():
+        """Serve the main Illustrator Co-Pilot interface"""
+        return render_template('index.html')
+
+    @app.route('/api')
+    def api_index():
+        """Serve the LibraryCloud API interface"""
+        return render_template('api_s_index.html')
+
+    # Add a redirect for the old home URL if necessary
+    @app.route('/home')
+    def home():
+        return redirect(url_for('index'))
+
 # Create app instance
 app, settings = create_app()
+
+# Initialize SocketIO
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Add Socket.IO event handlers
+@socketio.on('message')
+def handle_message(message):
+    # Process the message and generate a response
+    # This is where you'd call your OpenAI API if available
+    response = process_user_message(message)
+    emit('response', {'data': response})
+
+def process_user_message(message):
+    # Simple fallback if OpenAI API is not available
+    if not settings.OPENAI_API_KEY:
+        if "process" in message.lower():
+            return "Here are some process tips for Adobe Illustrator..."
+        elif "design" in message.lower():
+            return "Here are some design principles to consider..."
+        elif "tutorial" in message.lower():
+            return "Check out these Illustrator tutorials..."
+        else:
+            return "I'm here to help with Illustrator. Ask me about processes, design, or tutorials!"
+    else:
+        # Use OpenAI API for more advanced responses
+        # Your existing OpenAI integration code here
+        pass
 
 def extract_book_info(item):
     """Extract book information including ISBN from API response."""
@@ -651,8 +694,8 @@ if __name__ == "__main__":
     port_env = os.environ.get("PORT", "5000")
     try:
         port = validate_port(port_env)
-        debug_mode = os.environ.get("FLASK_ENV", "production") == "development"
-        app.run(host="0.0.0.0", port=port, debug=debug_mode)
+        # Use socketio.run instead of app.run
+        socketio.run(app, host="0.0.0.0", port=port, debug=(os.environ.get("FLASK_ENV") == "development"))
     except (ValueError, RuntimeError) as e:
         logger.error(f"Failed to start application: {e}")
         print(f"Error: {e}. Please check the PORT environment variable and try again.")

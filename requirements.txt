@@ -17,3 +17,4 @@ ratelimit==2.2.1
 # Pin specific versions of numpy and pandas that are compatible
 numpy==1.26.3
 pandas==2.2.0 --no-binary pandas
+flask-socketio==5.3.4
