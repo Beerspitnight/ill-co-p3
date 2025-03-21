@@ -636,18 +636,6 @@ def validate_port(port_str):
     if port <= 0 or port > 65535:
         raise ValueError("Port number must be between 1 and 65535.")
     return port
-
-    try:
-        port = validate_port(port_env)
-        debug_mode = os.environ.get("FLASK_ENV", "production") == "development"
-        app.run(host="0.0.0.0", port=port, debug=debug_mode)
-    except (ValueError, RuntimeError) as e:
-        logger.error(f"Failed to start application: {e}")
-        print(f"Error: {e}. Please check the PORT environment variable and try again.")
-        sys.exit(1)
-    except (ValueError, RuntimeError) as e:
-        logger.error(f"Failed to start application: {e}")
-        raise
 logger.info(f"GOOGLE_APPLICATION_CREDENTIALS is set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))}")
 print(f"GOOGLE_APPLICATION_CREDENTIALS is set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))}")
 # Any code using the OpenAI API should check for the key first
@@ -657,3 +645,15 @@ if settings.OPENAI_API_KEY:
 else:
     # Log that the OpenAI API is not available
     logger.warning("OpenAI API key not set, related functionality will be unavailable")
+
+# Add this at the end of the file
+if __name__ == "__main__":
+    port_env = os.environ.get("PORT", "5000")
+    try:
+        port = validate_port(port_env)
+        debug_mode = os.environ.get("FLASK_ENV", "production") == "development"
+        app.run(host="0.0.0.0", port=port, debug=debug_mode)
+    except (ValueError, RuntimeError) as e:
+        logger.error(f"Failed to start application: {e}")
+        print(f"Error: {e}. Please check the PORT environment variable and try again.")
+        sys.exit(1)
