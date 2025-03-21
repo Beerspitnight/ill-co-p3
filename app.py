@@ -13,7 +13,7 @@ import re
 import uuid
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-import pandas as pd
+import csv
 from pydantic import BaseModel
 from google.oauth2 import service_account
 from flask_compress import Compress
@@ -236,7 +236,12 @@ def search_books():
             filename = f"search_results_{timestamp}.csv"
             filepath = safe_join("data/raw_csv", filename)
             
-            df = pd.DataFrame(books)
+            data = []
+            with open(filepath, "r") as f:
+                reader = csv.DictReader(f)
+                data = list(reader)
+            filtered = [row for row in data if float(row["column"]) > 10]
+            
             os.makedirs("data/raw_csv", exist_ok=True)
             df.to_csv(filepath, index=False)
             
