@@ -649,3 +649,11 @@ def validate_port(port_str):
         raise
 logger.info(f"GOOGLE_APPLICATION_CREDENTIALS: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
 print(f"GOOGLE_APPLICATION_CREDENTIALS: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
+
+# Any code using the OpenAI API should check for the key first
+if settings.OPENAI_API_KEY:
+    # Use OpenAI API
+    pass
+else:
+    # Log that the OpenAI API is not available
+    logger.warning("OpenAI API key not set, related functionality will be unavailable")
