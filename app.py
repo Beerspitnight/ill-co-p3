@@ -35,8 +35,8 @@ class BookResponse(BaseModel):
     authors: list[str]
     description: str | None = None
 
-    class Config:
-        schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "title": "The Great Gatsby",
                 "authors": ["F. Scott Fitzgerald"],
@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     GOOGLE_APPLICATION_CREDENTIALS: str
     MAX_RETRIES: int = 3
     CACHE_TIMEOUT: int = 3600
-    OPENAI_API_KEY: str
+     OPENAI_API_KEY: str | None = None  # Make it optional
     SECRET_KEY: str
     GOOGLE_DRIVE_FOLDER_ID: str
     API_KEY: str
