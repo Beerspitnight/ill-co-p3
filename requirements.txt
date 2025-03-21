@@ -14,7 +14,8 @@ python-dotenv==1.0.0
 uuid==1.30
 tenacity==8.2.2
 ratelimit==2.2.1
-# Pin specific versions of numpy and pandas that are compatible
-numpy==1.26.3
-pandas==2.2.0 --no-binary pandas
-flask-socketio==5.3.4
+flask-socketio==5.3.3
+eventlet==0.33.3
+# Comment out complex dependencies
+# numpy==1.26.3
+# pandas==2.2.0 --no-binary pandas
