@@ -13,6 +13,7 @@ import re
 import uuid
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+import pandas as pd
 from pydantic import BaseModel
 from google.oauth2 import service_account
 from flask_compress import Compress
@@ -74,9 +75,7 @@ class Settings(BaseSettings):
 # Initialize settings
 def get_settings():
     return Settings()
-def register_routes(api_v1):
-    # TODO: Implement route registration logic here
-    pass
+# Removed redundant register_routes function definition
 # Initialize Blueprint
 api_v1 = Blueprint('api_v1', __name__, url_prefix='/api/v1')
 
@@ -223,7 +222,7 @@ def search_books():
         books = []
         url = f"https://www.googleapis.com/books/v1/volumes?q={query}&key={GOOGLE_BOOKS_API_KEY}"
         
-        response = requests.get(url)
+        url = f"https://www.googleapis.com/books/v1/volumes?q={query}&key={app.config['GOOGLE_BOOKS_API_KEY']}"
         response.raise_for_status()
         data = response.json()
 
@@ -297,7 +296,9 @@ def get_file():
     try:
         # Validate filename
         if not re.match(r'^[a-zA-Z0-9_.-]+$', filename):
-            return jsonify({"error": "Invalid filename format"}), 400
+            filename = secure_filename(filename)
+            if not filename:
+                return jsonify({"error": "Invalid filename format"}), 400
             
         filepath = os.path.join(results_dir, filename)
         
@@ -370,7 +371,9 @@ def before_request():
 # Validate GOOGLE_BOOKS_API_KEY
 GOOGLE_BOOKS_API_KEY = settings.GOOGLE_BOOKS_API_KEY
 if not GOOGLE_BOOKS_API_KEY.strip():
-    raise RuntimeError("GOOGLE_BOOKS_API_KEY is not set. Application cannot start without it.")
+    logger.error("GOOGLE_BOOKS_API_KEY is not set. Application cannot start without it.")
+    import sys
+    sys.exit(1)
 
 def filter_book_data(volume_info):
     """Filter and format book data from Google Books API response."""
@@ -381,7 +384,7 @@ def filter_book_data(volume_info):
     }
 
 # Define fetch_books_from_google function
-@lru_cache(maxsize=128)
+@limits(calls=1000, period=100)  # Adjusted rate limiting to match Google Books API quota
 @sleep_and_retry
 @limits(calls=100, period=60)  # Add rate limiting
 def fetch_books_from_google(query):
@@ -518,8 +521,7 @@ def upload_to_google_drive(file_path, file_name):
         
         logger.info("Creating file metadata with parent folder...")
         file_metadata = {
-            'name': file_name,
-            'parents': ['1q8Rbo5N3mPweYlrf3rFFXxLGUbW95o-j']  # Specified folder ID
+            'parents': [app.config.get('GOOGLE_DRIVE_FOLDER_ID', '1q8Rbo5N3mPweYlrf3rFFXxLGUbW95o-j')]  # Use configurable folder ID or fallback
         }
         
         logger.info("Creating MediaFileUpload object...")
@@ -615,7 +617,10 @@ def upload_search_results_to_drive(books, query):
         return None
     finally:
         if temp_file and os.path.exists(temp_file):
-            os.unlink(temp_file)
+            try:
+                os.unlink(temp_file)
+            except Exception as e:
+                logger.warning(f"Failed to delete temporary file {temp_file}: {e}", exc_info=True)
 
 # Define validate_port function
 def validate_port(port_str):
@@ -626,15 +631,16 @@ def validate_port(port_str):
         raise ValueError("Port number must be between 1 and 65535.")
     return port
 
-# Run the app
-if __name__ == "__main__":
-    port_env = os.environ.get("PORT", "5000")
     try:
         port = validate_port(port_env)
         debug_mode = os.environ.get("FLASK_ENV", "production") == "development"
         app.run(host="0.0.0.0", port=port, debug=debug_mode)
     except (ValueError, RuntimeError) as e:
         logger.error(f"Failed to start application: {e}")
+        print(f"Error: {e}. Please check the PORT environment variable and try again.")
+        sys.exit(1)
+    except (ValueError, RuntimeError) as e:
+        logger.error(f"Failed to start application: {e}")
         raise
-
+logger.info(f"GOOGLE_APPLICATION_CREDENTIALS: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
 print(f"GOOGLE_APPLICATION_CREDENTIALS: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
