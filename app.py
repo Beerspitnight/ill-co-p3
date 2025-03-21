@@ -35,7 +35,7 @@ class BookResponse(BaseModel):
     authors: list[str]
     description: str | None = None
 
-    model_config = {
+    model_config = { 
         "json_schema_extra": {
             "example": {
                 "title": "The Great Gatsby",
@@ -45,6 +45,7 @@ class BookResponse(BaseModel):
                 "publisher": "Scribner"
             }
         }
+    }
 
 # Define Settings model
 class Settings(BaseSettings):
@@ -65,7 +66,7 @@ class Settings(BaseSettings):
     GOOGLE_APPLICATION_CREDENTIALS: str
     MAX_RETRIES: int = 3
     CACHE_TIMEOUT: int = 3600
-     OPENAI_API_KEY: str | None = None  # Make it optional
+    OPENAI_API_KEY: str | None = None  # Make it optional
     SECRET_KEY: str
     GOOGLE_DRIVE_FOLDER_ID: str
     API_KEY: str
@@ -647,9 +648,8 @@ def validate_port(port_str):
     except (ValueError, RuntimeError) as e:
         logger.error(f"Failed to start application: {e}")
         raise
-logger.info(f"GOOGLE_APPLICATION_CREDENTIALS: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
-print(f"GOOGLE_APPLICATION_CREDENTIALS: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
-
+logger.info(f"GOOGLE_APPLICATION_CREDENTIALS is set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))}")
+print(f"GOOGLE_APPLICATION_CREDENTIALS is set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))}")
 # Any code using the OpenAI API should check for the key first
 if settings.OPENAI_API_KEY:
     # Use OpenAI API
