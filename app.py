@@ -45,7 +45,7 @@ import sys
 os.environ['EVENTLET_NO_GREENDNS'] = 'yes'
 
 # Enable mock data by default in development mode
-USE_MOCK_DATA = os.environ.get("USE_MOCK_DATA", "true").lower() == "true"
+USE_MOCK_DATA = os.environ.get("USE_MOCK_DATA", "false").lower() == "true"
 
 # Define BookResponse model
 class BookResponse(BaseModel):
@@ -160,9 +160,10 @@ def setup_routes(app):
 
         try:
             # Try to fetch real data with a short timeout
-            use_mock = request.args.get("mock", "").lower() == "true" or USE_MOCK_DATA
+            mock_param = request.args.get("mock", "")
+            use_mock = (mock_param.lower() == "true" if mock_param else USE_MOCK_DATA)
             
-            if use_mock:
+            if (use_mock):
                 # Use mock data if explicitly requested
                 books = get_mock_books(query, "google")
                 return jsonify({
@@ -204,7 +205,7 @@ def setup_routes(app):
                 "message": f"API error. Returning {len(mock_books)} mock books for '{query}'",
                 "books": mock_books,
                 "drive_link": None,
-                "mock": False,
+                "mock": True,  # Changed to True
                 "error": str(e)
             })
 
@@ -262,6 +263,20 @@ def setup_routes(app):
         except Exception as e:
             logger.error(f"Credential verification failed: {str(e)}", exc_info=True)
             return jsonify({"error": f"Credentials verification failed: {str(e)}"}), 500
+
+    @app.route("/api/status")
+    def api_status():
+        """Show API status including mock mode"""
+        return jsonify({
+            "status": "ok",
+            "mock_mode": USE_MOCK_DATA,
+            "env": app.config.get("FLASK_ENV", "production"),
+            "apis": {
+                "google_books": bool(app.config.get("GOOGLE_BOOKS_API_KEY")),
+                "google_drive": bool(app.config.get("GOOGLE_APPLICATION_CREDENTIALS")),
+                "openai": bool(settings.OPENAI_API_KEY)
+            }
+        })
 
 # Create app instance
 app, settings = create_app()
@@ -413,7 +428,7 @@ def search_openlibrary():
                 "message": f"Found {len(books)} mock books (API connection failed)",
                 "books": books,
                 "drive_link": None,
-                "mock": False,
+                "mock": True,
             })
         
         # Rest of your function stays the same...
@@ -428,7 +443,7 @@ def search_openlibrary():
                 "message": f"Found {len(mock_books)} mock books (API error: {str(e)})",
                 "books": mock_books,
                 "drive_link": None,
-                "mock": False
+                "mock": True  # Changed to True
             })
             
         return jsonify({"error": str(e)}), 500
