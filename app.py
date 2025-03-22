@@ -121,6 +121,38 @@ def initialize_extensions(app):
 
 def setup_routes(app):
     """Set up routes and blueprints."""
+    # API endpoints
+    @app.route("/api/welcome")
+    def api_welcome():
+        return "<h1>Welcome to the LibraryCloud API!</h1>"
+    
+    @app.route("/api")
+    def api_index():
+        """Serve the LibraryCloud API interface"""
+        return render_template('api_s_index.html')
+    
+    # Book search endpoints
+    @app.route("/search_books")
+    def search_books():
+        """Search books endpoint with enhanced metadata extraction."""
+        query = request.args.get("query")
+        if not query:
+            return jsonify({"error": "Query parameter is required"}), 400
+
+        try:
+            # Your existing search_books code...
+        except Exception as e:
+            logger.error(f"Error processing request: {e}", exc_info=True)
+            return jsonify({"error": str(e)}), 500
+    
+    # Other API routes...
+    
+    # Chat interface route
+    @app.route('/')
+    def home_page():
+        """Serve the main Illustrator Co-Pilot interface"""
+        return render_template('index.html')
+
     # Register the blueprint routes
     register_routes(api_v1)
     app.register_blueprint(api_v1)
