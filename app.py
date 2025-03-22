@@ -44,10 +44,6 @@ socket.setdefaulttimeout(20)  # 20 seconds timeout
 # Load environment variables from .env file
 load_dotenv()
 
-# Add at the top of your file, after imports
-import os
-import os
-import socket
 # Force usage of system DNS resolver instead of eventlet's
 os.environ['EVENTLET_NO_GREENDNS'] = 'yes'
 
@@ -86,7 +82,6 @@ class Settings(BaseSettings):
         GOOGLE_DRIVE_FOLDER_ID (str): Google Drive folder ID for uploads.
         API_KEY (str): General API key for the application.
     """
-    GOOGLE_BOOKS_API_KEY: str
     GOOGLE_BOOKS_API_KEY: str
 
     @property
@@ -140,7 +135,6 @@ def create_app():
 def configure_app(app, settings):
     """Configure the Flask app with settings."""
     app.config.update(
-        GOOGLE_BOOKS_API_KEY=settings.GOOGLE_BOOKS_API_KEY.strip(),
         GOOGLE_BOOKS_API_KEY=settings.validated_google_books_api_key,
         MAX_RETRIES=settings.MAX_RETRIES,
         CACHE_TIMEOUT=settings.CACHE_TIMEOUT
@@ -190,7 +184,7 @@ def setup_routes(app):
                 })
             
             # Try to fetch real data
-            books = fetch_books_from_google(query, app.config['GOOGLE_BOOKS_API_KEY'])
+            books = fetch_books_from_google(query)
             
             if not books:
                 # Fallback to mock if no real books found
@@ -294,30 +288,12 @@ def setup_routes(app):
 app, settings = create_app()
 
 # Initialize SocketIO
-# Create app instance - this needs to be after all the function definitions
-app, settings = create_app()
-
 # Set up application configuration for Google credentials if not already set
 if 'GOOGLE_APPLICATION_CREDENTIALS' not in app.config:
     app.config['GOOGLE_APPLICATION_CREDENTIALS'] = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
 
 # Initialize SocketIO
 socketio = SocketIO(app, cors_allowed_origins="*")
-
-# Define SocketIO event handlers and helper functions
-def process_user_message(message):
-    """Process user messages and return appropriate responses."""
-    # Simple fallback if OpenAI API is not available
-    if not settings.OPENAI_API_KEY:
-        if "process" in message.lower():
-            return "Here are some process tips for Adobe Illustrator..."
-# Any code using the OpenAI API should check for the key first
-if settings.OPENAI_API_KEY:
-    # Placeholder for OpenAI API integration
-    logger.info("OpenAI API key is set. Add your implementation here.")
-else:
-    # Log that the OpenAI API is not available
-    logger.warning("OpenAI API key not set, related functionality will be unavailable")
 
 # Define SocketIO message handler
 @socketio.on('message')
@@ -468,6 +444,16 @@ def search_openlibrary():
         
         # Rest of your function stays the same...
         
+        # Upload results to Google Drive
+        file_path = upload_search_results_to_drive(books, query)
+
+        return jsonify({
+            "message": f"Found {len(books)} books for '{query}'",
+            "books": books,
+            "drive_link": file_path,
+            "mock": False
+        })
+        
     except Exception as e:
         logger.error(f"Error processing OpenLibrary search: {e}", exc_info=True)
         
@@ -506,31 +492,6 @@ def before_request():
     g.request_id = request.headers.get('X-Request-ID', str(uuid.uuid4()))
     logger.info(f"Processing request {g.request_id}: {request.method} {request.path}")
 
-# Validate GOOGLE_BOOKS_API_KEY inside create_app
-def create_app():
-    """Application factory pattern"""
-    app = Flask(__name__)
-    settings = get_settings()
-
-    configure_app(app, settings)
-    initialize_extensions(app)
-def fetch_books_from_google(query, google_books_api_key):
-    """Fetch books from Google Books API with improved retry logic."""
-    if not query or not isinstance(query, str) or len(query.strip()) == 0:
-        raise ValueError("Query parameter must be a non-empty string.")
-
-    from urllib.parse import quote
-    url = f"https://www.googleapis.com/books/v1/volumes?q={quote(query)}&key={google_books_api_key.strip()}"
-    
-    # Add custom headers to help with DNS resolution
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'application/json'
-    }
-    
-    # Implement the rest of the function here
-    # This function definition appears to be incomplete
-
 # Define fetch_books_from_google function
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=2, max=20))
 def fetch_books_from_google(query):
@@ -556,8 +517,6 @@ def fetch_books_from_google(query):
     except requests.RequestException as e:
         logger.error(f"Error fetching books from Google: {str(e)}")
         raise BookAPIError(f"Failed to fetch books: {str(e)}")
-# These logs will be moved to the end after app is initialized
-    logger.debug(f"Application root: {os.path.dirname(__file__)}")
 # Log application details
 logger.info(f"Application root: {os.path.dirname(__file__)}")
 logger.info(f"Running on Heroku: {bool(os.getenv('HEROKU'))}")
@@ -742,10 +701,6 @@ def validate_port(port_str):
     if port <= 0 or port > 65535:
         raise ValueError("Port number must be between 1 and 65535.")
     return port
-logger.info(f"GOOGLE_APPLICATION_CREDENTIALS is set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))}")
-logger.info(f"GOOGLE_APPLICATION_CREDENTIALS is set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))}")
-# Will move these logs to after app initialization
-# Placeholder for OpenAI API integration
 
 # Application startup code
 if __name__ == "__main__":
