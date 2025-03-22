@@ -1,4 +1,14 @@
-from flask import Flask, request, jsonify, g, redirect, url_for, Blueprint, send_from_directory, make_response, render_template
+from flask import (
+    Flask,
+    request,
+    jsonify,
+    g,
+    redirect,
+    url_for,
+    Blueprint,
+    make_response,
+    render_template
+)
 from werkzeug.utils import safe_join, secure_filename  # secure_filename moved here
 # Remove the import from security module
 from werkzeug.security import generate_password_hash, check_password_hash  # If you need these
@@ -26,10 +36,8 @@ from ratelimit import limits, sleep_and_retry, RateLimitException
 from openlibrary_search import fetch_books_from_openlibrary
 from dotenv import load_dotenv
 from flask_socketio import SocketIO, emit
-
-# Add near the top of your file, after imports
+# Add at the top of your file, after imports
 import socket
-
 # Set DNS resolution timeout and configure DNS
 socket.setdefaulttimeout(20)  # 20 seconds timeout
 
@@ -38,9 +46,8 @@ load_dotenv()
 
 # Add at the top of your file, after imports
 import os
+import os
 import socket
-import sys
-
 # Force usage of system DNS resolver instead of eventlet's
 os.environ['EVENTLET_NO_GREENDNS'] = 'yes'
 
@@ -53,7 +60,7 @@ class BookResponse(BaseModel):
     authors: list[str]
     description: str | None = None
 
-    model_config = { 
+    model_config = {
         "json_schema_extra": {
             "example": {
                 "title": "The Great Gatsby",
@@ -64,7 +71,6 @@ class BookResponse(BaseModel):
             }
         }
     }
-
 # Define Settings model
 class Settings(BaseSettings):
     """
@@ -81,7 +87,17 @@ class Settings(BaseSettings):
         API_KEY (str): General API key for the application.
     """
     GOOGLE_BOOKS_API_KEY: str
-    GOOGLE_APPLICATION_CREDENTIALS: str
+    GOOGLE_BOOKS_API_KEY: str
+
+    @property
+    def validated_google_books_api_key(self) -> str:
+        """Validate and return the stripped Google Books API key."""
+        key = self.GOOGLE_BOOKS_API_KEY.strip()
+        if not key:
+            raise ValueError("GOOGLE_BOOKS_API_KEY is not set or is empty.")
+        if not re.match(r'^[A-Za-z0-9_\-]+$', key):
+            raise ValueError("GOOGLE_BOOKS_API_KEY is invalid. Please provide a valid API key.")
+        return key
     MAX_RETRIES: int = 3
     CACHE_TIMEOUT: int = 3600
     OPENAI_API_KEY: str | None = None  # Make it optional
@@ -100,7 +116,7 @@ def get_settings():
 # Initialize Blueprint
 api_v1 = Blueprint('api_v1', __name__, url_prefix='/api/v1')
 
-# Set up logging
+# Set up logging - place this near the top of the file
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -124,8 +140,8 @@ def create_app():
 def configure_app(app, settings):
     """Configure the Flask app with settings."""
     app.config.update(
-        GOOGLE_BOOKS_API_KEY=settings.GOOGLE_BOOKS_API_KEY,
-        GOOGLE_APPLICATION_CREDENTIALS=settings.GOOGLE_APPLICATION_CREDENTIALS,
+        GOOGLE_BOOKS_API_KEY=settings.GOOGLE_BOOKS_API_KEY.strip(),
+        GOOGLE_BOOKS_API_KEY=settings.validated_google_books_api_key,
         MAX_RETRIES=settings.MAX_RETRIES,
         CACHE_TIMEOUT=settings.CACHE_TIMEOUT
     )
@@ -157,7 +173,7 @@ def setup_routes(app):
         query = request.args.get("query")
         if not query:
             return jsonify({"error": "Query parameter is required"}), 400
-
+    
         try:
             # Try to fetch real data with a short timeout
             mock_param = request.args.get("mock", "")
@@ -174,7 +190,7 @@ def setup_routes(app):
                 })
             
             # Try to fetch real data
-            books = fetch_books_from_google(query)
+            books = fetch_books_from_google(query, app.config['GOOGLE_BOOKS_API_KEY'])
             
             if not books:
                 # Fallback to mock if no real books found
@@ -188,24 +204,20 @@ def setup_routes(app):
                 
             # Upload results to Google Drive
             file_path = upload_search_results_to_drive(books, query)
-            
             return jsonify({
                 "message": f"Found {len(books)} books for '{query}'",
                 "books": books,
                 "drive_link": file_path,
                 "mock": False
             })
-            
         except Exception as e:
-            logger.error(f"Error processing request: {e}", exc_info=True)
-            
             # Always fallback to mock data on error
             mock_books = get_mock_books(query, "google")
             return jsonify({
                 "message": f"API error. Returning {len(mock_books)} mock books for '{query}'",
                 "books": mock_books,
                 "drive_link": None,
-                "mock": True,  # Changed to True
+                "mock": True,
                 "error": str(e)
             })
 
@@ -282,13 +294,36 @@ def setup_routes(app):
 app, settings = create_app()
 
 # Initialize SocketIO
+# Create app instance - this needs to be after all the function definitions
+app, settings = create_app()
+
+# Set up application configuration for Google credentials if not already set
+if 'GOOGLE_APPLICATION_CREDENTIALS' not in app.config:
+    app.config['GOOGLE_APPLICATION_CREDENTIALS'] = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+
+# Initialize SocketIO
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Add Socket.IO event handlers
+# Define SocketIO event handlers and helper functions
+def process_user_message(message):
+    """Process user messages and return appropriate responses."""
+    # Simple fallback if OpenAI API is not available
+    if not settings.OPENAI_API_KEY:
+        if "process" in message.lower():
+            return "Here are some process tips for Adobe Illustrator..."
+# Any code using the OpenAI API should check for the key first
+if settings.OPENAI_API_KEY:
+    # Placeholder for OpenAI API integration
+    logger.info("OpenAI API key is set. Add your implementation here.")
+else:
+    # Log that the OpenAI API is not available
+    logger.warning("OpenAI API key not set, related functionality will be unavailable")
+
+# Define SocketIO message handler
 @socketio.on('message')
-def handle_message(message):
+def handle_message(data):
+    message = data.get('message', '')
     # Process the message and generate a response
-    # This is where you'd call your OpenAI API if available
     response = process_user_message(message)
     emit('response', {'data': response})
 
@@ -471,26 +506,30 @@ def before_request():
     g.request_id = request.headers.get('X-Request-ID', str(uuid.uuid4()))
     logger.info(f"Processing request {g.request_id}: {request.method} {request.path}")
 
-# Validate GOOGLE_BOOKS_API_KEY
-google_books_api_key = app.config['GOOGLE_BOOKS_API_KEY'].strip()
-if not google_books_api_key:
-    logger.error("GOOGLE_BOOKS_API_KEY is not set or is empty. Application cannot start without it.")
-    import sys
-    sys.exit(1)
+# Validate GOOGLE_BOOKS_API_KEY inside create_app
+def create_app():
+    """Application factory pattern"""
+    app = Flask(__name__)
+    settings = get_settings()
 
-# Optionally, add further validation for the key format if needed
-if not re.match(r'^[A-Za-z0-9_\-]+$', google_books_api_key):
-    logger.error("GOOGLE_BOOKS_API_KEY is invalid. Please provide a valid API key.")
-    import sys
-    sys.exit(1)
+    configure_app(app, settings)
+    initialize_extensions(app)
+def fetch_books_from_google(query, google_books_api_key):
+    """Fetch books from Google Books API with improved retry logic."""
+    if not query or not isinstance(query, str) or len(query.strip()) == 0:
+        raise ValueError("Query parameter must be a non-empty string.")
 
-def filter_book_data(volume_info):
-    """Filter and format book data from Google Books API response."""
-    return {
-        "title": volume_info.get("title", ""),
-        "authors": volume_info.get("authors", []),
-        "description": volume_info.get("description", None)
+    from urllib.parse import quote
+    url = f"https://www.googleapis.com/books/v1/volumes?q={quote(query)}&key={google_books_api_key.strip()}"
+    
+    # Add custom headers to help with DNS resolution
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'application/json'
     }
+    
+    # Implement the rest of the function here
+    # This function definition appears to be incomplete
 
 # Define fetch_books_from_google function
 @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=2, max=20))
@@ -500,30 +539,34 @@ def fetch_books_from_google(query):
         raise ValueError("Query parameter must be a non-empty string.")
 
     from urllib.parse import quote
-    url = f"https://www.googleapis.com/books/v1/volumes?q={quote(query)}&key={app.config['GOOGLE_BOOKS_API_KEY']}"
+    url = f"https://www.googleapis.com/books/v1/volumes?q={quote(query)}&key={app.config['GOOGLE_BOOKS_API_KEY'].strip()}"
+    
+    # Add custom headers to help with DNS resolution
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'application/json'
+    }
     
     try:
-        # Add timeout parameter
-        response = requests.get(url, timeout=15)
+        # Use a longer timeout and custom headers
+        response = requests.get(url, headers=headers, timeout=30)
         response.raise_for_status()
         data = response.json()
-        return [filter_book_data(item["volumeInfo"]) for item in data.get("items", [])]
-    except RateLimitException as e:
-        logger.warning(f"Rate limit exceeded: {e}")
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching books: {e}")
-        raise
-
-if app.config.get("DEBUG", False):
+        return [extract_book_info(item) for item in data.get("items", [])]
+    except requests.RequestException as e:
+        logger.error(f"Error fetching books from Google: {str(e)}")
+        raise BookAPIError(f"Failed to fetch books: {str(e)}")
+# These logs will be moved to the end after app is initialized
     logger.debug(f"Application root: {os.path.dirname(__file__)}")
 # Log application details
 logger.info(f"Application root: {os.path.dirname(__file__)}")
 logger.info(f"Running on Heroku: {bool(os.getenv('HEROKU'))}")
 
+from flask import current_app
+
 def get_drive_service():
     """Returns an authenticated Google Drive service object."""
-    google_credentials = app.config['GOOGLE_APPLICATION_CREDENTIALS']
+    google_credentials = current_app.config['GOOGLE_APPLICATION_CREDENTIALS']
     if not google_credentials:
         logger.error("GOOGLE_APPLICATION_CREDENTIALS environment variable is not set")
         raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS is not set")
@@ -593,7 +636,7 @@ def upload_to_google_drive(file_path, file_name):
         
         logger.info("Creating file metadata with parent folder...")
         file_metadata = {
-            'parents': [app.config.get('GOOGLE_DRIVE_FOLDER_ID', '1q8Rbo5N3mPweYlrf3rFFXxLGUbW95o-j')]  # Use configurable folder ID or fallback
+            'parents': [settings.GOOGLE_DRIVE_FOLDER_ID]  # Use the folder ID from settings
         }
         
         logger.info("Creating MediaFileUpload object...")
@@ -622,7 +665,7 @@ def upload_to_google_drive(file_path, file_name):
             public_permission = service.permissions().create(
                 fileId=file_id,
                 body={
-                    "role": "reader",  # Changed from writer to reader: This allows anyone with the link to edit the file, which can pose security risks. Use cautiously.
+                    "role": "reader",  # Changed from writer to reader: This allows anyone with the link to view the file, which is safer than granting edit permissions to the public.
                     "type": "anyone"
                 }
             ).execute()
@@ -692,34 +735,26 @@ def upload_search_results_to_drive(books, query):
                 os.unlink(temp_file)
             except Exception as e:
                 logger.warning(f"Failed to delete temporary file {temp_file}: {e}", exc_info=True)
-
-# Define validate_port function
 def validate_port(port_str):
     if not port_str.isdigit():
-        raise RuntimeError(f"Invalid PORT environment variable: {port_str}. Must be a numeric value.")
+        raise ValueError(f"Invalid PORT environment variable: {port_str}. Must be a numeric value.")
     port = int(port_str)
     if port <= 0 or port > 65535:
         raise ValueError("Port number must be between 1 and 65535.")
     return port
 logger.info(f"GOOGLE_APPLICATION_CREDENTIALS is set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))}")
-print(f"GOOGLE_APPLICATION_CREDENTIALS is set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))}")
-# Any code using the OpenAI API should check for the key first
-if settings.OPENAI_API_KEY:
-    # Placeholder for OpenAI API integration
-    logger.info("OpenAI API key is set. Add your implementation here.")
-else:
-    # Log that the OpenAI API is not available
-    logger.warning("OpenAI API key not set, related functionality will be unavailable")
+logger.info(f"GOOGLE_APPLICATION_CREDENTIALS is set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))}")
+# Will move these logs to after app initialization
+# Placeholder for OpenAI API integration
 
-# Add this at the end of the file
+# Application startup code
 if __name__ == "__main__":
     port_env = os.environ.get("PORT", "5000")
     try:
         port = validate_port(port_env)
         # Use socketio.run instead of app.run
         is_debug_mode = os.environ.get("FLASK_ENV") == "development"
-        socketio.run(app, host="0.0.0.0", port=port, debug=is_debug_mode)
+        socketio.run(app, host="0.0.0.0", port=port, use_reloader=is_debug_mode)
     except (ValueError, RuntimeError) as e:
-        logger.error(f"Failed to start application: {e}")
-        print(f"Error: {e}. Please check the PORT environment variable and try again.")
-        sys.exit(1)
+        logger.error(f"Failed to start server: {e}")
+# Move the application startup code to after all the implementation is done
