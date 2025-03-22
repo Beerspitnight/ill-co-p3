@@ -1,4 +1,4 @@
-import requests
+import httpx  # Replace requests with httpx
 import logging
 from typing import List, Dict, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -6,10 +6,10 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 # Set up logging
 logger = logging.getLogger(__name__)
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+@retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=2, max=30))
 def fetch_books_from_openlibrary(query: str) -> List[Dict]:
     """
-    Fetch books from Open Library API based on a query.
+    Fetch books from Open Library API with improved retry logic.
     
     Args:
         query (str): Search query string
@@ -20,9 +20,11 @@ def fetch_books_from_openlibrary(query: str) -> List[Dict]:
     url = f"https://openlibrary.org/search.json?q={query}&limit=10"
     
     try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        # Use httpx instead of requests
+        with httpx.Client(timeout=30) as client:
+            response = client.get(url)
+            response.raise_for_status()
+            data = response.json()
         
         books = []
         for doc in data.get("docs", []):
@@ -46,6 +48,6 @@ def fetch_books_from_openlibrary(query: str) -> List[Dict]:
 
         logger.info(f"Found {len(books)} books from OpenLibrary for query: {query}")
         return books
-    except requests.RequestException as e:
+    except Exception as e:
         logger.error(f"Error fetching books from Open Library: {e}")
         return []

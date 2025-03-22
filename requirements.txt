@@ -18,4 +18,4 @@ flask-socketio==5.3.3
 eventlet==0.33.3
 # Comment out complex dependencies
 # numpy==1.26.3
-# pandas==2.2.0 --no-binary pandas
+# pandas==2.2.0 --no-binary pandashttpx==0.24.1

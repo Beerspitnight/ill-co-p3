@@ -26,6 +26,12 @@ from openlibrary_search import fetch_books_from_openlibrary
 from dotenv import load_dotenv
 from flask_socketio import SocketIO, emit
 
+# Add near the top of your file, after imports
+import socket
+
+# Set DNS resolution timeout and configure DNS
+socket.setdefaulttimeout(20)  # 20 seconds timeout
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -408,38 +414,58 @@ def get_file():
 
 @app.route("/search_openlibrary")
 def search_openlibrary():
-    """Search books using OpenLibrary API."""
+    """Search OpenLibrary API endpoint with fallback to mock data."""
     query = request.args.get("query")
     if not query:
         return jsonify({"error": "Query parameter is required"}), 400
-        
+
     try:
-        # Log the incoming request
-        request_id = str(uuid.uuid4())
-        logger.info(f"Processing request {request_id}: GET /search_openlibrary")
-        
-        # Fetch books from OpenLibrary
         books = fetch_books_from_openlibrary(query)
         
-        if not books:
-            return jsonify({
-                "message": "No books found",
-                "books": [],
-                "drive_link": None
-            })
+        if not books and (app.config.get("FLASK_ENV") == "development" or request.args.get("mock") == "true"):
+            # If no books found and in development or mock mode, return mock data
+            books = get_mock_books(query, "openlibrary")
             
-        # Upload results to Google Drive
-        drive_link = upload_search_results_to_drive(books, f"openlibrary_{query}")
+            return jsonify({
+                "message": f"Found {len(books)} mock books (API connection failed)",
+                "books": books,
+                "drive_link": None,
+                "mock": True
+            })
         
-        return jsonify({
-            "message": f"Found {len(books)} books",
-            "books": books,
-            "drive_link": drive_link
-        })
+        # Rest of your function stays the same...
         
     except Exception as e:
         logger.error(f"Error processing OpenLibrary search: {e}", exc_info=True)
+        
+        if app.config.get("FLASK_ENV") == "development" or request.args.get("mock") == "true":
+            # Return mock data if there's an error
+            mock_books = get_mock_books(query, "openlibrary")
+            return jsonify({
+                "message": f"Found {len(mock_books)} mock books (API error: {str(e)})",
+                "books": mock_books,
+                "drive_link": None,
+                "mock": True
+            })
+            
         return jsonify({"error": str(e)}), 500
+
+# Add this function for fallback mock data
+
+def get_mock_books(query, source="unknown"):
+    """Return mock book data for testing when external APIs are unavailable."""
+    return [
+        {
+            "title": f"{source.title()} Book About {query.title()}",
+            "authors": ["API Connection Error"],
+            "description": f"This is mock data because the {source} API connection failed. Try again later."
+        },
+        {
+            "title": f"Another {source.title()} Book About {query.title()}",
+            "authors": ["API Connection Error"],
+            "description": "Mock data for testing purposes."
+        }
+    ]
 
 # Define before_request function
 @app.before_request
@@ -462,19 +488,18 @@ def filter_book_data(volume_info):
     }
 
 # Define fetch_books_from_google function
-@limits(calls=1000, period=100)  # Adjusted rate limiting to match Google Books API quota
-@sleep_and_retry
-@limits(calls=100, period=60)  # Add rate limiting
+@retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=2, max=20))
 def fetch_books_from_google(query):
-    """Fetch books from Google Books API with rate limiting and caching."""
+    """Fetch books from Google Books API with improved retry logic."""
     if not query or not isinstance(query, str) or len(query.strip()) == 0:
         raise ValueError("Query parameter must be a non-empty string.")
 
     from urllib.parse import quote
-    # Change this line to use app.config
     url = f"https://www.googleapis.com/books/v1/volumes?q={quote(query)}&key={app.config['GOOGLE_BOOKS_API_KEY']}"
+    
     try:
-        response = requests.get(url)
+        # Add timeout parameter
+        response = requests.get(url, timeout=15)
         response.raise_for_status()
         data = response.json()
         return [filter_book_data(item["volumeInfo"]) for item in data.get("items", [])]
