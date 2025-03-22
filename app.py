@@ -144,17 +144,20 @@ def setup_routes(app):
 
         try:
             books = fetch_books_from_google(query)
-            filename = save_results_to_csv(books, query)
-            drive_link = None
-            if filename:
-                drive_link = upload_to_google_drive(
-                    os.path.join(app.config['RESULTS_DIR'], filename),
-                    filename
-                )
-            return jsonify({
+            if not books:
+                return jsonify({"error": "No books found"}), 404
+                
+            drive_link = upload_search_results_to_drive(books, query)
+            response = {
                 "books": books,
-                "drive_link": drive_link
-            })
+                "drive_link": drive_link,
+                "message": "Search completed successfully"
+            }
+            
+            if not drive_link:
+                response["warning"] = "Results were found but could not be uploaded to Drive"
+                
+            return jsonify(response)
         except Exception as e:
             logger.error(f"Error processing request: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
