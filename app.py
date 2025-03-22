@@ -3,6 +3,7 @@ from werkzeug.utils import safe_join, secure_filename  # secure_filename moved h
 # Remove the import from security module
 from werkzeug.security import generate_password_hash, check_password_hash  # If you need these
 from datetime import datetime
+import sys
 import os
 import requests
 import base64
@@ -133,6 +134,10 @@ def setup_routes(app):
     def api_index():
         """Serve the LibraryCloud API interface"""
         return render_template('api_s_index.html')
+        
+    @app.route('/home')
+    def home():
+        return redirect(url_for('home_page'))
     
     # Book search endpoints
     @app.route("/search_books")
@@ -168,6 +173,7 @@ def setup_routes(app):
     @app.route('/')
     def home_page():
         """Serve the main Illustrator Co-Pilot interface"""
+        return render_template('index.html')
     # Removed duplicate route definition for '/'
     app.register_blueprint(api_v1)
 
@@ -203,7 +209,7 @@ def setup_routes(app):
                 decoded = base64.b64decode(creds).decode('utf-8') if creds else None
             except:
                 decoded = None
-                
+            
             return jsonify({
                 "success": True,
                 "credentials_set": bool(creds),
@@ -214,22 +220,7 @@ def setup_routes(app):
             })
         except Exception as e:
             logger.error(f"Credential verification failed: {str(e)}", exc_info=True)
-            return jsonify({
-                "success": False,
-                "error": str(e)
-            }), 500
-
-    @app.route('/')
-    def home_page():
-        """Serve the main Illustrator Co-Pilot interface"""
-        return render_template('index.html')
-
-    @app.route('/api')
-    def api_index():
-        """Serve the LibraryCloud API interface"""
-    # Removed duplicate '/api' route definition to avoid conflicts
-    def home():
-        return redirect(url_for('home_page'))
+            return jsonify({"error": f"Credentials verification failed: {str(e)}"}), 500
 
 # Create app instance
 app, settings = create_app()
@@ -296,10 +287,9 @@ def extract_book_info(item):
         'info_link': volume_info.get('infoLink', '')
     }
 
-@app.route("/search_books")
-def search_books():
-    """Search books endpoint with enhanced metadata extraction."""
-# Removed duplicate @app.route("/search_books") definition to avoid routing conflicts.
+@app.route("/list_results")
+def list_results():
+    """List saved search results."""
     try:
         # Fix: Use app.config to get RESULTS_DIR
         results_dir = app.config['RESULTS_DIR']
@@ -475,41 +465,6 @@ if app.config.get("DEBUG", False):
 logger.info(f"Application root: {os.path.dirname(__file__)}")
 logger.info(f"Running on Heroku: {bool(os.getenv('HEROKU'))}")
 
-# Define get_drive_service function
-def save_results_to_csv(books, query):
-    """Save search results to a CSV file in the results directory.
-    
-    Args:
-        books (list): List of book dictionaries
-        query (str): Search query string
-        
-    Returns:
-        str: Filename of the saved CSV file or None if failed
-    """
-    if not books:
-        logger.warning("No books found for the given query.")
-        return None
-
-    try:
-        filename = f'search_results_{query.replace(" ", "_")}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
-        filepath = os.path.join(app.config['RESULTS_DIR'], filename)
-        
-        with open(filepath, "w", newline="", encoding="utf-8") as file:
-            fieldnames = ["title", "authors", "description"]
-            writer = csv.DictWriter(file, fieldnames=fieldnames)
-            writer.writeheader()
-            for book in books:
-                book_row = {field: book.get(field, "") for field in fieldnames}
-                if isinstance(book_row.get('authors'), list):
-                    book_row['authors'] = ', '.join(book_row['authors'])
-                writer.writerow(book_row)
-        
-        return filename
-        
-    except Exception as e:
-        logger.error(f"Error saving results to CSV: {e}", exc_info=True)
-        return None
-
 def get_drive_service():
     """Returns an authenticated Google Drive service object."""
     google_credentials = app.config['GOOGLE_APPLICATION_CREDENTIALS']
@@ -611,7 +566,7 @@ def upload_to_google_drive(file_path, file_name):
             public_permission = service.permissions().create(
                 fileId=file_id,
                 body={
-                    "role": "writer",  # Changed from reader to writer: This allows anyone with the link to edit the file, which can pose security risks. Use cautiously.
+                    "role": "reader",  # Changed from writer to reader: This allows anyone with the link to edit the file, which can pose security risks. Use cautiously.
                     "type": "anyone"
                 }
             ).execute()
@@ -623,7 +578,7 @@ def upload_to_google_drive(file_path, file_name):
                 body={
                     "role": "writer",
                     "type": "user",
-                    "emailAddress": "iwasonamountian@gmail.com"
+                    "emailAddress": os.environ.get("DRIVE_NOTIFICATION_EMAIL", "iwasonamountian@gmail.com")
                 },
                 sendNotificationEmail=False
             ).execute()
