@@ -128,9 +128,6 @@ def initialize_extensions(app):
 def setup_routes(app):
     """Set up routes and blueprints."""
     # API endpoints
-    @app.route("/api/welcome")
-    def api_welcome():
-        return "<h1>Welcome to the LibraryCloud API!</h1>"
     
     @app.route("/api")
     def api_index():
@@ -146,7 +143,18 @@ def setup_routes(app):
             return jsonify({"error": "Query parameter is required"}), 400
 
         try:
-            # Your existing search_books code...
+            books = fetch_books_from_google(query)
+            filename = save_results_to_csv(books, query)
+            drive_link = None
+            if filename:
+                drive_link = upload_to_google_drive(
+                    os.path.join(app.config['RESULTS_DIR'], filename),
+                    filename
+                )
+            return jsonify({
+                "books": books,
+                "drive_link": drive_link
+            })
         except Exception as e:
             logger.error(f"Error processing request: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
@@ -157,10 +165,7 @@ def setup_routes(app):
     @app.route('/')
     def home_page():
         """Serve the main Illustrator Co-Pilot interface"""
-        return render_template('index.html')
-
-    # Register the blueprint routes
-    register_routes(api_v1)
+    # Removed duplicate route definition for '/'
     app.register_blueprint(api_v1)
 
     # Register core routes
@@ -219,10 +224,7 @@ def setup_routes(app):
     @app.route('/api')
     def api_index():
         """Serve the LibraryCloud API interface"""
-        return render_template('api_s_index.html')
-
-    # Add a redirect for the old home URL if necessary
-    @app.route('/home')
+    # Removed duplicate '/api' route definition to avoid conflicts
     def home():
         return redirect(url_for('home_page'))
 
@@ -294,60 +296,7 @@ def extract_book_info(item):
 @app.route("/search_books")
 def search_books():
     """Search books endpoint with enhanced metadata extraction."""
-    query = request.args.get("query")
-    if not query:
-        return jsonify({"error": "Query parameter is required"}), 400
-
-    try:
-        request_id = str(uuid.uuid4())
-        logger.info(f"Processing request {request_id}: GET /search_books")
-        
-        books = []
-        
-        url = f"https://www.googleapis.com/books/v1/volumes?q={query}&key={app.config['GOOGLE_BOOKS_API_KEY']}"
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-
-        for item in data.get('items', []):
-            book_info = extract_book_info(item)
-            books.append(book_info)
-
-        # Create CSV with enhanced metadata
-        if books:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f"search_results_{timestamp}.csv"
-            filepath = safe_join("data/raw_csv", filename)
-            
-            os.makedirs("data/raw_csv", exist_ok=True)
-            with open(filepath, 'w', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=['title', 'authors', 'description', 'isbn', 'publisher', 'categories'])
-                writer.writeheader()
-                writer.writerows(books)
-            
-            logger.info(f"Saved {len(books)} books to {filepath}")
-            
-            # Upload to Google Drive
-            drive_link = upload_to_google_drive(filepath, filename)
-            
-            return jsonify({
-                "message": f"Found {len(books)} books",
-                "books": books,
-                "drive_link": drive_link
-            })
-        
-        return jsonify({
-            "message": "No books found",
-            "books": [],
-            "drive_link": None
-        })
-
-    except Exception as e:
-        logger.error(f"Error processing request {request_id}: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/list_results")
-def list_results():
+# Removed duplicate @app.route("/search_books") definition to avoid routing conflicts.
     try:
         # Fix: Use app.config to get RESULTS_DIR
         results_dir = app.config['RESULTS_DIR']
@@ -393,7 +342,7 @@ def get_file():
             return jsonify({"error": "File not found"}), 404
             
         # Prevent directory traversal
-        if os.path.commonpath([filepath, results_dir]) != os.path.normpath(results_dir):
+        if not os.path.abspath(filepath).startswith(os.path.abspath(results_dir) + os.sep):
             logger.error(f"Security issue: Attempted to access file outside results directory")
             return jsonify({"error": "Security error"}), 403
 
@@ -474,8 +423,15 @@ def before_request():
     logger.info(f"Processing request {g.request_id}: {request.method} {request.path}")
 
 # Validate GOOGLE_BOOKS_API_KEY
-if not app.config['GOOGLE_BOOKS_API_KEY'].strip():
-    logger.error("GOOGLE_BOOKS_API_KEY is not set. Application cannot start without it.")
+google_books_api_key = app.config['GOOGLE_BOOKS_API_KEY'].strip()
+if not google_books_api_key:
+    logger.error("GOOGLE_BOOKS_API_KEY is not set or is empty. Application cannot start without it.")
+    import sys
+    sys.exit(1)
+
+# Optionally, add further validation for the key format if needed
+if not re.match(r'^[A-Za-z0-9_\-]+$', google_books_api_key):
+    logger.error("GOOGLE_BOOKS_API_KEY is invalid. Please provide a valid API key.")
     import sys
     sys.exit(1)
 
@@ -652,7 +608,7 @@ def upload_to_google_drive(file_path, file_name):
             public_permission = service.permissions().create(
                 fileId=file_id,
                 body={
-                    "role": "writer",  # Changed from reader to writer
+                    "role": "writer",  # Changed from reader to writer: This allows anyone with the link to edit the file, which can pose security risks. Use cautiously.
                     "type": "anyone"
                 }
             ).execute()
@@ -705,7 +661,6 @@ def upload_search_results_to_drive(books, query):
             writer = csv.DictWriter(file, fieldnames=fieldnames)
             writer.writeheader()
             for book in books:
-                # Handle authors list conversion and provide default values
                 book_row = {field: book.get(field, "") for field in fieldnames}
                 if isinstance(book_row.get('authors'), list):
                     book_row['authors'] = ', '.join(book_row['authors'])
@@ -736,8 +691,8 @@ logger.info(f"GOOGLE_APPLICATION_CREDENTIALS is set: {bool(os.getenv('GOOGLE_APP
 print(f"GOOGLE_APPLICATION_CREDENTIALS is set: {bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))}")
 # Any code using the OpenAI API should check for the key first
 if settings.OPENAI_API_KEY:
-    # Use OpenAI API
-    pass
+    # Placeholder for OpenAI API integration
+    logger.info("OpenAI API key is set. Add your implementation here.")
 else:
     # Log that the OpenAI API is not available
     logger.warning("OpenAI API key not set, related functionality will be unavailable")
@@ -748,7 +703,8 @@ if __name__ == "__main__":
     try:
         port = validate_port(port_env)
         # Use socketio.run instead of app.run
-        socketio.run(app, host="0.0.0.0", port=port, debug=(os.environ.get("FLASK_ENV") == "development"))
+        is_debug_mode = os.environ.get("FLASK_ENV") == "development"
+        socketio.run(app, host="0.0.0.0", port=port, debug=is_debug_mode)
     except (ValueError, RuntimeError) as e:
         logger.error(f"Failed to start application: {e}")
         print(f"Error: {e}. Please check the PORT environment variable and try again.")

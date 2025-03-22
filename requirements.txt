@@ -16,6 +16,7 @@ tenacity==8.2.2
 ratelimit==2.2.1
 flask-socketio==5.3.3
 eventlet==0.33.3
+httpx==0.28.1
 # Comment out complex dependencies
 # numpy==1.26.3
 # pandas==2.2.0 --no-binary pandashttpx==0.24.1
