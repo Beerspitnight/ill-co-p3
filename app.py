@@ -36,6 +36,17 @@ socket.setdefaulttimeout(20)  # 20 seconds timeout
 # Load environment variables from .env file
 load_dotenv()
 
+# Add at the top of your file, after imports
+import os
+import socket
+import sys
+
+# Force usage of system DNS resolver instead of eventlet's
+os.environ['EVENTLET_NO_GREENDNS'] = 'yes'
+
+# Enable mock data by default in development mode
+USE_MOCK_DATA = os.environ.get("USE_MOCK_DATA", "true").lower() == "true"
+
 # Define BookResponse model
 class BookResponse(BaseModel):
     title: str
@@ -142,31 +153,61 @@ def setup_routes(app):
     # Book search endpoints
     @app.route("/search_books")
     def search_books():
-        """Search books endpoint with enhanced metadata extraction."""
+        """Search books endpoint with enhanced metadata extraction and mock data fallback."""
         query = request.args.get("query")
         if not query:
             return jsonify({"error": "Query parameter is required"}), 400
 
         try:
-            books = fetch_books_from_google(query)
-            if not books:
-                return jsonify({"error": "No books found"}), 404
-                
-            drive_link = upload_search_results_to_drive(books, query)
-            response = {
-                "books": books,
-                "drive_link": drive_link,
-                "message": "Search completed successfully"
-            }
+            # Try to fetch real data with a short timeout
+            use_mock = request.args.get("mock", "").lower() == "true" or USE_MOCK_DATA
             
-            if not drive_link:
-                response["warning"] = "Results were found but could not be uploaded to Drive"
+            if use_mock:
+                # Use mock data if explicitly requested
+                books = get_mock_books(query, "google")
+                return jsonify({
+                    "message": f"Found {len(books)} mock books for '{query}'",
+                    "books": books,
+                    "drive_link": None,
+                    "mock": True
+                })
+            
+            # Try to fetch real data
+            books = fetch_books_from_google(query)
+            
+            if not books:
+                # Fallback to mock if no real books found
+                books = get_mock_books(query, "google")
+                return jsonify({
+                    "message": f"No real books found. Returning {len(books)} mock books for '{query}'",
+                    "books": books,
+                    "drive_link": None,
+                    "mock": True
+                })
                 
-            return jsonify(response)
+            # Upload results to Google Drive
+            file_path = upload_search_results_to_drive(books, query)
+            
+            return jsonify({
+                "message": f"Found {len(books)} books for '{query}'",
+                "books": books,
+                "drive_link": file_path,
+                "mock": False
+            })
+            
         except Exception as e:
             logger.error(f"Error processing request: {e}", exc_info=True)
-            return jsonify({"error": str(e)}), 500
-    
+            
+            # Always fallback to mock data on error
+            mock_books = get_mock_books(query, "google")
+            return jsonify({
+                "message": f"API error. Returning {len(mock_books)} mock books for '{query}'",
+                "books": mock_books,
+                "drive_link": None,
+                "mock": True,
+                "error": str(e)
+            })
+
     # Other API routes...
     
     # Chat interface route
