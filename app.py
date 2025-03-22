@@ -127,7 +127,7 @@ def setup_routes(app):
     app.register_blueprint(api_v1)
 
     # Register core routes
-    @app.route("/")
+    @app.route("/api/welcome")
     def index():
         return "<h1>Welcome to the LibraryCloud API!</h1>"
 
@@ -175,7 +175,7 @@ def setup_routes(app):
             }), 500
 
     @app.route('/')
-    def index():
+    def home_page():
         """Serve the main Illustrator Co-Pilot interface"""
         return render_template('index.html')
 
@@ -187,7 +187,7 @@ def setup_routes(app):
     # Add a redirect for the old home URL if necessary
     @app.route('/home')
     def home():
-        return redirect(url_for('index'))
+        return redirect(url_for('home_page'))
 
 # Create app instance
 app, settings = create_app()
