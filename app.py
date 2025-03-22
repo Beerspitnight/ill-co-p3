@@ -15,7 +15,6 @@ import re
 import uuid
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-import csv
 from pydantic import BaseModel
 from google.oauth2 import service_account
 from flask_compress import Compress
@@ -128,7 +127,7 @@ def setup_routes(app):
 
     # Register core routes
     @app.route("/api/welcome")
-    def index():
+    def api_welcome():
         return "<h1>Welcome to the LibraryCloud API!</h1>"
 
     @app.route("/test_drive")
@@ -266,7 +265,6 @@ def search_books():
         logger.info(f"Processing request {request_id}: GET /search_books")
         
         books = []
-        url = f"https://www.googleapis.com/books/v1/volumes?q={query}&key={GOOGLE_BOOKS_API_KEY}"
         
         url = f"https://www.googleapis.com/books/v1/volumes?q={query}&key={app.config['GOOGLE_BOOKS_API_KEY']}"
         response = requests.get(url)
@@ -418,8 +416,7 @@ def before_request():
     logger.info(f"Processing request {g.request_id}: {request.method} {request.path}")
 
 # Validate GOOGLE_BOOKS_API_KEY
-GOOGLE_BOOKS_API_KEY = settings.GOOGLE_BOOKS_API_KEY
-if not GOOGLE_BOOKS_API_KEY.strip():
+if not app.config['GOOGLE_BOOKS_API_KEY'].strip():
     logger.error("GOOGLE_BOOKS_API_KEY is not set. Application cannot start without it.")
     import sys
     sys.exit(1)
@@ -437,15 +434,13 @@ def filter_book_data(volume_info):
 @sleep_and_retry
 @limits(calls=100, period=60)  # Add rate limiting
 def fetch_books_from_google(query):
-    """Fetch books from Google Books API with rate limiting and caching.
-
-    Uses an LRU cache to store results for repeated queries.
-    """
+    """Fetch books from Google Books API with rate limiting and caching."""
     if not query or not isinstance(query, str) or len(query.strip()) == 0:
         raise ValueError("Query parameter must be a non-empty string.")
 
     from urllib.parse import quote
-    url = f"https://www.googleapis.com/books/v1/volumes?q={quote(query)}&key={GOOGLE_BOOKS_API_KEY}"
+    # Change this line to use app.config
+    url = f"https://www.googleapis.com/books/v1/volumes?q={quote(query)}&key={app.config['GOOGLE_BOOKS_API_KEY']}"
     try:
         response = requests.get(url)
         response.raise_for_status()
@@ -457,6 +452,7 @@ def fetch_books_from_google(query):
     except Exception as e:
         logger.error(f"Error fetching books: {e}")
         raise
+
 if app.config.get("DEBUG", False):
     logger.debug(f"Application root: {os.path.dirname(__file__)}")
 # Log application details
