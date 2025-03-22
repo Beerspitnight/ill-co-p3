@@ -8,7 +8,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 logger = logging.getLogger(__name__)
 
 # Check if we should use mock data
-USE_MOCK_DATA = os.environ.get("USE_MOCK_DATA", "true").lower() == "true"
+USE_MOCK_DATA = os.environ.get("USE_MOCK_DATA", "false").lower() == "true"
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
 def fetch_books_from_openlibrary(query: str) -> List[Dict]:

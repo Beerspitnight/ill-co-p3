@@ -204,7 +204,7 @@ def setup_routes(app):
                 "message": f"API error. Returning {len(mock_books)} mock books for '{query}'",
                 "books": mock_books,
                 "drive_link": None,
-                "mock": True,
+                "mock": False,
                 "error": str(e)
             })
 
@@ -413,7 +413,7 @@ def search_openlibrary():
                 "message": f"Found {len(books)} mock books (API connection failed)",
                 "books": books,
                 "drive_link": None,
-                "mock": True
+                "mock": False,
             })
         
         # Rest of your function stays the same...
@@ -428,7 +428,7 @@ def search_openlibrary():
                 "message": f"Found {len(mock_books)} mock books (API error: {str(e)})",
                 "books": mock_books,
                 "drive_link": None,
-                "mock": True
+                "mock": False
             })
             
         return jsonify({"error": str(e)}), 500
